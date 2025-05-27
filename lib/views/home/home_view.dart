@@ -12,7 +12,7 @@ import 'package:monetaze/widgets/cards/theme_card.dart';
 import 'package:monetaze/widgets/charts/savings_chart.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:monetaze/main.dart';
+import 'package:flutter_shimmer/flutter_shimmer.dart';
 
 class HomeView extends StatefulWidget {
   final QuoteService quoteService;
@@ -36,6 +36,7 @@ class _HomeViewState extends State<HomeView> {
   List<Goal> goals = [];
   List<ActivityTimelineData> recentActivities = [];
   late final QuoteService _quoteService;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -48,22 +49,36 @@ class _HomeViewState extends State<HomeView> {
   Future<void> _loadQuote() async {
     try {
       final quote = await _quoteService.fetchRandomQuote();
-      setState(() {
-        motivationalQuote = '${quote.text} - ${quote.author}';
-      });
+      if (mounted) {
+        setState(() {
+          motivationalQuote = '${quote.text} - ${quote.author}';
+        });
+      }
     } catch (e) {
-      setState(() {
-        motivationalQuote = 'Saving consistently leads to financial freedom.';
-      });
+      if (mounted) {
+        setState(() {
+          motivationalQuote = 'Saving consistently leads to financial freedom.';
+        });
+      }
     }
   }
 
   Future<void> _initHive() async {
-    _goalsBox = await Hive.openBox<Goal>('goals');
-    _tasksBox = await Hive.openBox<Task>('tasks');
-    _userBox = await Hive.openBox<User>('user');
-    _quotesBox = await Hive.openBox<MotivationalQuote>('quotes');
-    _loadData();
+    try {
+      _goalsBox = await Hive.openBox<Goal>('goals');
+      _tasksBox = await Hive.openBox<Task>('tasks');
+      _userBox = await Hive.openBox<User>('user');
+      _quotesBox = await Hive.openBox<MotivationalQuote>('quotes');
+      await _loadData();
+    } catch (e) {
+      debugPrint('Error initializing Hive: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadData() async {
@@ -75,19 +90,21 @@ class _HomeViewState extends State<HomeView> {
       });
     } else {
       setState(() {
-        userName = 'User'; // Default name if no user exists
+        userName = 'User';
       });
     }
 
     final savedQuotes = await _quoteService.getSavedQuotes();
     if (savedQuotes.isNotEmpty) {
-      // Get the most recent quote
       final recentQuote = savedQuotes.first;
-      motivationalQuote = '${recentQuote.text} - ${recentQuote.author}';
+      setState(() {
+        motivationalQuote = '${recentQuote.text} - ${recentQuote.author}';
+      });
     } else {
-      // If no saved quotes, fetch a new one
       final newQuote = await _quoteService.fetchRandomQuote();
-      motivationalQuote = '${newQuote.text} - ${newQuote.author}';
+      setState(() {
+        motivationalQuote = '${newQuote.text} - ${newQuote.author}';
+      });
     }
 
     // Calculate monthly savings from completed tasks
@@ -140,6 +157,10 @@ class _HomeViewState extends State<HomeView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return _buildShimmerLoading();
+    }
+
     final theme = Theme.of(context);
     final progressPercentage =
         totalMonthlyTarget > 0
@@ -153,20 +174,26 @@ class _HomeViewState extends State<HomeView> {
         child: Column(
           children: [
             // Header Card
-            ThemeCard(
-              title: 'Welcome back, $userName',
-              subtitle: motivationalQuote,
-              logo: const Icon(Icons.person_outline, size: 28),
-              onTap: () => _showUserProfile(context),
-              margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              usePrimaryContainer: true,
-              titleSize: 22,
-              subtitleSize: 15,
-              tightPadding: true,
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: ThemeCard(
+                key: ValueKey(userName + motivationalQuote),
+                title: 'Welcome back, $userName',
+                subtitle: motivationalQuote,
+                logo: const Icon(Icons.person_outline, size: 28),
+                onTap: () => _showUserProfile(context),
+                margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                usePrimaryContainer: true,
+                titleSize: 22,
+                subtitleSize: 15,
+                tightPadding: true,
+              ),
             ),
 
             // Main Content Container
-            Container(
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeInOut,
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
@@ -214,7 +241,46 @@ class _HomeViewState extends State<HomeView> {
     );
   }
 
-  // ==================== Section Builders ====================
+  Widget _buildShimmerLoading() {
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      child: Column(
+        children: [
+          const SizedBox(height: 16),
+          ProfileShimmer(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            isDarkMode: Theme.of(context).brightness == Brightness.dark,
+          ),
+          const SizedBox(height: 16),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              color: Theme.of(context).colorScheme.surface,
+            ),
+            child: Column(
+              children: [
+                const ListTileShimmer(
+                  padding: EdgeInsets.all(16),
+                  isDarkMode: false,
+                ),
+                const Divider(height: 0),
+                ListTileShimmer(
+                  padding: const EdgeInsets.all(16),
+                  isDarkMode: Theme.of(context).brightness == Brightness.dark,
+                ),
+                const Divider(height: 0),
+                ListTileShimmer(
+                  padding: const EdgeInsets.all(16),
+                  isDarkMode: Theme.of(context).brightness == Brightness.dark,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildSavingsSection(
     BuildContext context, {
@@ -231,37 +297,79 @@ class _HomeViewState extends State<HomeView> {
       title: 'Monthly Savings',
       content: Column(
         children: [
-          // Summary Row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildStatCard(
-                context,
-                title: 'Saved',
-                value: '$currency${saved.toStringAsFixed(0)}',
-                color: theme.colorScheme.primary,
+              Flexible(
+                // Added Flexible here
+                child: _buildAnimatedStatCard(
+                  context,
+                  title: 'Saved',
+                  value: '$currency${saved.toStringAsFixed(0)}',
+                  color: theme.colorScheme.primary,
+                ),
               ),
-              _buildStatCard(
-                context,
-                title: 'Target',
-                value: '$currency${target.toStringAsFixed(0)}',
-                color: theme.colorScheme.secondary,
+              const SizedBox(width: 8), // Added spacing between cards
+              Flexible(
+                // Added Flexible here
+                child: _buildAnimatedStatCard(
+                  context,
+                  title: 'Target',
+                  value: '$currency${target.toStringAsFixed(0)}',
+                  color: theme.colorScheme.secondary,
+                ),
               ),
-              _buildStatCard(
-                context,
-                title: 'Progress',
-                value: '${(progress * 100).toStringAsFixed(1)}%',
-                color: theme.colorScheme.tertiary,
+              const SizedBox(width: 8), // Added spacing between cards
+              Flexible(
+                // Added Flexible here
+                child: _buildAnimatedStatCard(
+                  context,
+                  title: 'Progress',
+                  value: '${(progress * 100).toStringAsFixed(1)}%',
+                  color: theme.colorScheme.tertiary,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-
-          // Chart
-          SavingsChart(saved: saved, target: target),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 500),
+            child: SavingsChart(
+              key: ValueKey(saved + target),
+              saved: saved,
+              target: target,
+            ),
+          ),
           const SizedBox(height: 16),
         ],
       ),
+    );
+  }
+
+  Widget _buildAnimatedStatCard(
+    BuildContext context, {
+    required String title,
+    required String value,
+    required Color color,
+  }) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 500),
+      builder: (context, opacity, child) {
+        return Opacity(
+          opacity: opacity,
+          child: Transform.translate(
+            offset: Offset(0, (1 - opacity) * 20),
+            child: _buildStatCard(
+              // This now returns a Container directly
+              context,
+              title: title,
+              value: value,
+              color: color,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -272,7 +380,8 @@ class _HomeViewState extends State<HomeView> {
       title: 'Goals Progress',
       content: Column(
         children: [
-          for (final goal in goals.take(3)) _buildGoalItem(context, goal),
+          for (var i = 0; i < goals.take(3).length; i++)
+            AnimatedGoalItem(index: i, goal: goals[i]),
           if (_goalsBox.values.length > 3) ...[
             const SizedBox(height: 8),
             TextButton(
@@ -296,8 +405,8 @@ class _HomeViewState extends State<HomeView> {
       title: 'Recent Activity',
       content: Column(
         children: [
-          for (final activity in activities.take(3))
-            _buildActivityItem(context, activity),
+          for (var i = 0; i < activities.take(3).length; i++)
+            AnimatedActivityItem(index: i, activity: activities[i]),
           if (_tasksBox.values.where((task) => task.isCompleted).length >
               3) ...[
             const SizedBox(height: 8),
@@ -311,8 +420,6 @@ class _HomeViewState extends State<HomeView> {
       lastItem: true,
     );
   }
-
-  // ==================== Component Builders ====================
 
   Widget _buildSection(
     BuildContext context, {
@@ -364,169 +471,45 @@ class _HomeViewState extends State<HomeView> {
     required Color color,
   }) {
     final theme = Theme.of(context);
-    final width = MediaQuery.of(context).size.width * 0.28;
 
-    return Flexible(
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 60),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 12,
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                color: color,
-              ),
-            ),
-          ],
-        ),
+    return Container(
+      // Changed from Flexible to Container
+      constraints: const BoxConstraints(minHeight: 60),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
       ),
-    );
-  }
-
-  Widget _buildGoalItem(BuildContext context, Goal goal) {
-    final theme = Theme.of(context);
-    final progress = goal.currentAmount / goal.targetAmount;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Progress Indicator
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: CircularProgressIndicator(
-                  value: progress,
-                  backgroundColor: theme.colorScheme.surfaceVariant,
-                  color: theme.colorScheme.primary,
-                  strokeWidth: 3,
-                ),
-              ),
-              Text(
-                '${(progress * 100).toInt()}%',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-
-          // Goal Details
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  goal.name,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${goal.currency}${goal.currentAmount} of ${goal.currency}${goal.targetAmount}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActivityItem(
-    BuildContext context,
-    ActivityTimelineData activity,
-  ) {
-    final theme = Theme.of(context);
-    final date = _formatActivityDate(activity.date);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color:
-                  activity.isDeposit
-                      ? theme.colorScheme.primary.withOpacity(0.1)
-                      : theme.colorScheme.error.withOpacity(0.1),
-            ),
-            child: Icon(
-              activity.isDeposit ? Icons.arrow_downward : Icons.arrow_upward,
-              size: 18,
-              color:
-                  activity.isDeposit
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.error,
-            ),
-          ),
-          const SizedBox(width: 12),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(activity.category, style: theme.textTheme.bodyMedium),
-                Text(
-                  date,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
           Text(
-            '${activity.isDeposit ? '+' : '-'}${activity.amount.toStringAsFixed(0)}',
-            style: theme.textTheme.bodyMedium?.copyWith(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 12,
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w600,
-              color:
-                  activity.isDeposit
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.error,
+              fontSize: 14,
+              color: color,
             ),
           ),
         ],
       ),
     );
   }
-
-  // ==================== Helper Methods ====================
 
   String _formatActivityDate(DateTime date) {
     final now = DateTime.now();
@@ -541,8 +524,6 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
-  // ==================== Navigation Methods ====================
-
   void _showUserProfile(BuildContext context) {
     Navigator.pushNamed(context, '/profile');
   }
@@ -553,5 +534,179 @@ class _HomeViewState extends State<HomeView> {
 
   void _viewAllActivity(BuildContext context) {
     Provider.of<MainWrapperNotifier>(context, listen: false).currentIndex = 3;
+  }
+}
+
+class AnimatedGoalItem extends StatelessWidget {
+  final int index;
+  final Goal goal;
+
+  const AnimatedGoalItem({super.key, required this.index, required this.goal});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final progress = goal.currentAmount / goal.targetAmount;
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 300 + (index * 100)),
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset((1 - value) * 20, 0),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: CircularProgressIndicator(
+                          value: progress,
+                          backgroundColor: theme.colorScheme.surfaceVariant,
+                          color: theme.colorScheme.primary,
+                          strokeWidth: 3,
+                        ),
+                      ),
+                      Text(
+                        '${(progress * 100).toInt()}%',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          goal.name,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${goal.currency}${goal.currentAmount} of ${goal.currency}${goal.targetAmount}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class AnimatedActivityItem extends StatelessWidget {
+  final int index;
+  final ActivityTimelineData activity;
+
+  const AnimatedActivityItem({
+    super.key,
+    required this.index,
+    required this.activity,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final date = _formatActivityDate(activity.date);
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 300 + (index * 100)),
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset((1 - value) * 20, 0),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color:
+                          activity.isDeposit
+                              ? theme.colorScheme.primary.withOpacity(0.1)
+                              : theme.colorScheme.error.withOpacity(0.1),
+                    ),
+                    child: Icon(
+                      activity.isDeposit
+                          ? Icons.arrow_downward
+                          : Icons.arrow_upward,
+                      size: 18,
+                      color:
+                          activity.isDeposit
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          activity.category,
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        Text(
+                          date,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '${activity.isDeposit ? '+' : '-'}${activity.amount.toStringAsFixed(0)}',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color:
+                          activity.isDeposit
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.error,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _formatActivityDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} min ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours} hours ago';
+    } else {
+      return '${difference.inDays} days ago';
+    }
   }
 }
