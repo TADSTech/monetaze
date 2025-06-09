@@ -19,29 +19,41 @@ class UserAdapter extends TypeAdapter<User> {
     return User(
       id: fields[0] as String,
       name: fields[1] as String,
-      gender: fields[2] as String?,
-      financialGoal: fields[3] as String?,
-      createdAt: fields[4] as DateTime?,
-      updatedAt: fields[5] as DateTime?,
+      email: fields[2] as String?,
+      gender: fields[3] as String?,
+      financialGoal: fields[4] as String?,
+      profileImagePath: fields[5] as String?,
+      createdAt: fields[6] as DateTime?,
+      updatedAt: fields[7] as DateTime?,
+      themeMode: fields[8] as ThemeMode?,
+      themeIndex: fields[9] as int?,
     );
   }
 
   @override
   void write(BinaryWriter writer, User obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
       ..write(obj.name)
       ..writeByte(2)
-      ..write(obj.gender)
+      ..write(obj.email)
       ..writeByte(3)
-      ..write(obj.financialGoal)
+      ..write(obj.gender)
       ..writeByte(4)
-      ..write(obj.createdAt)
+      ..write(obj.financialGoal)
       ..writeByte(5)
-      ..write(obj.updatedAt);
+      ..write(obj.profileImagePath)
+      ..writeByte(6)
+      ..write(obj.createdAt)
+      ..writeByte(7)
+      ..write(obj.updatedAt)
+      ..writeByte(8)
+      ..write(obj.themeMode)
+      ..writeByte(9)
+      ..write(obj.themeIndex);
   }
 
   @override

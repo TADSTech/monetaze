@@ -30,7 +30,6 @@ class _GoalsViewState extends State<GoalsView> {
   void initState() {
     super.initState();
     _initHive();
-    checkAndRegenerateTasks();
   }
 
   Future<void> _initHive() async {
@@ -159,7 +158,7 @@ class _GoalsViewState extends State<GoalsView> {
       await Future.wait(existingTasks.map((id) => tasksBox.delete(id)));
 
       // Calculate payment amount with safety checks
-      final paymentAmount = goal.requiredPeriodicPayment;
+      final paymentAmount = goal.originalPeriodicPayment;
       if (paymentAmount <= 0) {
         debugPrint('Invalid payment amount for goal ${goal.name}');
         return;
@@ -259,7 +258,13 @@ class _GoalsViewState extends State<GoalsView> {
   void _navigateToTasks() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const TasksView()),
+      MaterialPageRoute(
+        builder:
+            (context) => const TasksView(
+              regenerateTasks: false,
+              isComingFromGoals: true,
+            ),
+      ),
     );
   }
 

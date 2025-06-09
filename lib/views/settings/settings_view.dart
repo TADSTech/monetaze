@@ -76,7 +76,7 @@ class _SettingsViewState extends State<SettingsView> {
                   onChanged: (value) {
                     if (value != null) {
                       themeProvider.setTheme(index);
-                      Navigator.pop(context);
+                      // No need to pop immediately, let user browse themes
                     }
                   },
                 );
@@ -86,7 +86,7 @@ class _SettingsViewState extends State<SettingsView> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: const Text('Close'), // Changed from 'Cancel' to 'Close'
             ),
           ],
         );
@@ -206,11 +206,17 @@ class _SettingsViewState extends State<SettingsView> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // App Settings Section
-            _buildSection(
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          // App Settings Section
+          Card(
+            margin: EdgeInsets.zero,
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: _buildSection(
               context,
               title: 'App Settings',
               children: [
@@ -258,10 +264,17 @@ class _SettingsViewState extends State<SettingsView> {
                 ),
               ],
             ),
-            const Divider(height: 1),
+          ),
+          const SizedBox(height: 16),
 
-            // Support Section
-            _buildSection(
+          // Support Section
+          Card(
+            margin: EdgeInsets.zero,
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: _buildSection(
               context,
               title: 'Support',
               children: [
@@ -277,10 +290,17 @@ class _SettingsViewState extends State<SettingsView> {
                 ),
               ],
             ),
-            const Divider(height: 1),
+          ),
+          const SizedBox(height: 16),
 
-            // Legal Section
-            _buildSection(
+          // Legal Section
+          Card(
+            margin: EdgeInsets.zero,
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: _buildSection(
               context,
               title: 'Legal',
               children: [
@@ -296,19 +316,40 @@ class _SettingsViewState extends State<SettingsView> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 16),
 
-            // App Version
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Version $_appVersion (build $_buildNumber)',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
-                ),
+          // Save Changes Button (primarily for future settings, theme is instant)
+          ElevatedButton(
+            onPressed: () {
+              // For theme settings, changes are already applied via notifyListeners
+              // This button would be more impactful for other settings that require explicit save
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('Settings saved!')));
+            },
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
               ),
             ),
-          ],
-        ),
+            child: const Text('Save Changes', style: TextStyle(fontSize: 16)),
+          ),
+
+          const SizedBox(height: 20), // Spacing before app version
+          // App Version
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Version $_appVersion (build $_buildNumber)',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -326,7 +367,7 @@ class _SettingsViewState extends State<SettingsView> {
           child: Text(
             title,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
               color: Theme.of(context).colorScheme.primary,
             ),
           ),

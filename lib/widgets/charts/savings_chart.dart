@@ -1,173 +1,286 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 class SavingsChart extends StatelessWidget {
   final double saved;
   final double target;
+  final String currency;
 
-  const SavingsChart({super.key, required this.saved, required this.target});
+  const SavingsChart({
+    super.key,
+    required this.saved,
+    required this.target,
+    this.currency = '₦',
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final progress = target > 0 ? saved / target : 0;
-    final double remaining = target > 0 ? target - saved : 0;
+    final progress =
+        target > 0 ? min(saved / target, 1.0) : 0; // Cap progress at 100%
+    final remaining =
+        target > 0
+            ? max(target - saved, 0)
+            : 0; // Ensure remaining isn't negative
 
-    // Determine the max Y value for the chart (the total target or the saved amount if target is 0)
-    final double maxY = target > 0 ? target : saved;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Savings Progress',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Main chart with progress indicator
+          _buildMainChart(
+            context,
+            theme,
+            progress.toDouble(),
+            saved,
+            remaining.toDouble(),
+          ),
+          const SizedBox(height: 24),
+          // Detailed information
+          _buildSavingsDetails(context, saved, remaining.toDouble(), currency),
+        ],
+      ),
+    );
+  }
 
-    return AspectRatio(
-      aspectRatio: 1.7, // Adjust aspect ratio as needed
-      child: Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        color: theme.cardColor,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Text(
-                'Progress: ${(progress * 100).toStringAsFixed(1)}%',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurface,
+  Widget _buildMainChart(
+    BuildContext context,
+    ThemeData theme,
+    double progress,
+    double saved,
+    double remaining,
+  ) {
+    return Row(
+      children: [
+        // Progress circle
+        _buildProgressCircle(theme, progress),
+        const SizedBox(width: 24),
+        // Expanded pie chart
+        Expanded(child: _buildPieChart(context, theme, saved, remaining)),
+      ],
+    );
+  }
+
+  Widget _buildProgressCircle(ThemeData theme, double progress) {
+    return Column(
+      children: [
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 80,
+              height: 80,
+              child: CircularProgressIndicator(
+                value: progress,
+                strokeWidth: 8,
+                backgroundColor: theme.colorScheme.surfaceVariant.withOpacity(
+                  0.5,
                 ),
-                textAlign: TextAlign.center,
+                color: theme.colorScheme.primary,
               ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: BarChart(
-                  BarChartData(
-                    barTouchData: BarTouchData(
-                      enabled: false,
-                    ), // Disable touch for simplicity
-                    titlesData: FlTitlesData(
-                      show: true,
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles:
-                              false, // Hide bottom labels (Saved/Remaining)
-                        ),
-                      ),
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: false, // Hide left labels (amounts)
-                        ),
-                      ),
-                      topTitles: AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      rightTitles: AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                    ),
-                    borderData: FlBorderData(
-                      show: false, // Hide border around the chart
-                    ),
-                    barGroups: [
-                      BarChartGroupData(
-                        x: 0, // Group for 'Saved'
-                        barRods: [
-                          BarChartRodData(
-                            toY: saved,
-                            color: theme.colorScheme.primary,
-                            width: 16, // Bar width
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ],
-                        showingTooltipIndicators: [
-                          0,
-                        ], // Show tooltip for this rod
-                      ),
-                      BarChartGroupData(
-                        x: 1, // Group for 'Remaining'
-                        barRods: [
-                          BarChartRodData(
-                            toY: remaining,
-                            color: theme.colorScheme.surfaceVariant,
-                            width: 16,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ],
-                        showingTooltipIndicators: [0],
-                      ),
-                    ],
-                    gridData: FlGridData(show: false), // Hide grid lines
-                    alignment: BarChartAlignment.spaceAround,
-                    // minX: 0,
-                    // maxX: 2, // 2 groups, so max x should be 1
-                    minY: 0,
-                    maxY:
-                        maxY > 0
-                            ? maxY + (maxY * 0.1)
-                            : 100, // Add some padding to maxY, or a default if target/saved is 0
-                    groupsSpace: 12, // Space between bar groups
-                    // No horizontal axis for labels, as per the original design
-                    // No primary measure axis as per the original design
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _Indicator(
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${(progress * 100).toStringAsFixed(0)}%',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
                     color: theme.colorScheme.primary,
-                    text: 'Saved: ₦${saved.toStringAsFixed(0)}',
-                    isSquare: true,
                   ),
-                  const SizedBox(width: 16),
-                  _Indicator(
-                    color: theme.colorScheme.surfaceVariant,
-                    text: 'Remaining: ₦${remaining.toStringAsFixed(0)}',
-                    isSquare: true,
+                ),
+                Text(
+                  'Complete',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.6),
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPieChart(
+    BuildContext context,
+    ThemeData theme,
+    double saved,
+    double remaining,
+  ) {
+    return AspectRatio(
+      aspectRatio: 1.3,
+      child: PieChart(
+        PieChartData(
+          sections: _buildPieSections(theme, saved, remaining),
+          centerSpaceRadius: 30,
+          sectionsSpace: 0,
+          borderData: FlBorderData(show: false),
+          startDegreeOffset: -90, // Start from top
+          pieTouchData: PieTouchData(
+            touchCallback: (FlTouchEvent event, pieTouchResponse) {},
+            enabled: false, // Disable touch interactions
           ),
         ),
       ),
     );
   }
-}
 
-class _Indicator extends StatelessWidget {
-  const _Indicator({
-    required this.color,
-    required this.text,
-    required this.isSquare,
-    this.size = 16,
-    this.textColor,
-  });
-  final Color color;
-  final String text;
-  final bool isSquare;
-  final double size;
-  final Color? textColor;
+  List<PieChartSectionData> _buildPieSections(
+    ThemeData theme,
+    double saved,
+    double remaining,
+  ) {
+    final total = saved + remaining;
+    final hasSavings = saved > 0;
+    final hasRemaining = remaining > 0;
 
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: isSquare ? BoxShape.rectangle : BoxShape.circle,
-            color: color,
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: TextStyle(
+    return [
+      if (hasSavings)
+        PieChartSectionData(
+          color: theme.colorScheme.primary,
+          value: saved,
+          title: '${(saved / total * 100).toStringAsFixed(0)}%',
+          radius: 24,
+          titleStyle: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
-            color: textColor ?? Theme.of(context).colorScheme.onSurface,
+            color: theme.colorScheme.onPrimary,
+          ),
+          titlePositionPercentageOffset: 0.55,
+          badgePositionPercentageOffset: 0.98,
+          showTitle:
+              hasSavings && saved / total > 0.1, // Only show if enough space
+        ),
+      if (hasRemaining)
+        PieChartSectionData(
+          color: theme.colorScheme.secondaryContainer,
+          value: remaining,
+          title: '${(remaining / total * 100).toStringAsFixed(0)}%',
+          radius: 20,
+          titleStyle: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onSecondaryContainer,
+          ),
+          titlePositionPercentageOffset: 0.55,
+          badgePositionPercentageOffset: 0.98,
+          showTitle: hasRemaining && remaining / total > 0.1,
+        ),
+    ];
+  }
+
+  Widget _buildSavingsDetails(
+    BuildContext context,
+    double saved,
+    double remaining,
+    String currency,
+  ) {
+    final theme = Theme.of(context);
+    final total = saved + remaining;
+
+    return Column(
+      children: [
+        _buildSavingsRow(
+          theme,
+          label: 'Saved',
+          value: saved,
+          total: total,
+          color: theme.colorScheme.primary,
+          currency: currency,
+        ),
+        const SizedBox(height: 8),
+        _buildSavingsRow(
+          theme,
+          label: 'Remaining',
+          value: remaining,
+          total: total,
+          color: theme.colorScheme.secondaryContainer,
+          currency: currency,
+        ),
+        const SizedBox(height: 8),
+        Divider(color: theme.colorScheme.outline.withOpacity(0.2), height: 24),
+        const SizedBox(height: 8),
+        _buildSavingsRow(
+          theme,
+          label: 'Target',
+          value: total,
+          total: total,
+          color: theme.colorScheme.tertiary,
+          currency: currency,
+          isBold: true,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSavingsRow(
+    ThemeData theme, {
+    required String label,
+    required double value,
+    required double total,
+    required Color color,
+    required String currency,
+    bool isBold = false,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
           ),
         ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.8),
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+        Text(
+          '$currency${value.toStringAsFixed(2)}',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        if (total > 0) ...[
+          const SizedBox(width: 8),
+          Text(
+            '(${(value / total * 100).toStringAsFixed(0)}%)',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
+            ),
+          ),
+        ],
       ],
     );
   }

@@ -14,69 +14,81 @@ class TaskService {
       final tasksBox = await Hive.openBox<Task>('tasks');
       final now = DateTime.now();
 
-      if (goal.targetDate == null) {
-        debugPrint('No target date set for goal ${goal.name}');
-        return;
-      }
+      // Get all existing tasks for this goal
+      final existingTasks =
+          tasksBox.values.where((t) => t.goalId == goal.id).toList();
 
-      // Get existing completed tasks for this goal (only keep those before target date)
-      final existingCompletedTasks =
-          tasksBox.values
-              .where(
-                (t) =>
-                    t.goalId == goal.id &&
-                    t.isCompleted &&
-                    t.dueDate.isBefore(goal.targetDate!),
-              )
-              .toList();
-
-      // Clear only INCOMPLETE tasks for this goal
+      // Separate completed and incomplete tasks
+      final completedTasks = existingTasks.where((t) => t.isCompleted).toList();
       final incompleteTasks =
-          tasksBox.values
-              .where((t) => t.goalId == goal.id && !t.isCompleted)
-              .map((t) => t.id)
-              .toList();
-      await Future.wait(incompleteTasks.map((id) => tasksBox.delete(id)));
+          existingTasks.where((t) => !t.isCompleted).toList();
 
-      // Calculate days remaining from now, not goal start date
-      final daysRemaining = goal.targetDate!.difference(now).inDays;
-      if (daysRemaining <= 0) {
-        debugPrint('Goal ${goal.name} has already passed its target date');
+      // Clear only incomplete tasks that are in the future
+      await Future.wait(
+        incompleteTasks
+            .where((t) => t.dueDate.isAfter(now))
+            .map((t) => tasksBox.delete(t.id)),
+      );
+
+      // Don't regenerate if goal is completed
+      if (goal.isCompleted) return;
+
+      // Calculate total duration from start to target date (moved outside if block)
+      final totalDuration = goal.targetDate?.difference(goal.startDate);
+
+      // If no target date, create just one task due today
+      if (goal.targetDate == null) {
+        // Check if we already have a task for today
+        final hasTaskForToday = existingTasks.any(
+          (t) =>
+              t.dueDate.year == now.year &&
+              t.dueDate.month == now.month &&
+              t.dueDate.day == now.day,
+        );
+
+        if (!hasTaskForToday) {
+          final task = Task(
+            id: _uuid.v4(),
+            goalId: goal.id,
+            title: 'Payment for ${goal.name}',
+            dueDate: now,
+            amount:
+                goal.originalPeriodicPayment, // Changed from requiredPeriodicPayment
+            currency: goal.currency,
+          );
+          await tasksBox.put(task.id, task);
+        }
         return;
       }
 
-      // Calculate payment amount with safety checks
-      final paymentAmount = goal.requiredPeriodicPayment;
-      if (paymentAmount <= 0) {
-        debugPrint('Invalid payment amount for goal ${goal.name}');
-        return;
-      }
-
-      // Generate new tasks based on interval (only for non-completed dates)
+      // Generate tasks based on interval
       switch (goal.savingsInterval) {
         case SavingsInterval.daily:
-          for (var i = 0; i < daysRemaining; i++) {
-            final dueDate = now.add(Duration(days: i));
-            if (existingCompletedTasks.any(
+          final days = totalDuration!.inDays; // Use totalDuration here
+          for (var i = 0; i <= days; i++) {
+            final dueDate = goal.startDate.add(Duration(days: i));
+            if (dueDate.isAfter(goal.targetDate!)) continue;
+
+            // Skip if we already have a task for this date
+            if (existingTasks.any(
               (t) =>
                   t.dueDate.year == dueDate.year &&
                   t.dueDate.month == dueDate.month &&
                   t.dueDate.day == dueDate.day,
-            )) {
+            ))
               continue;
-            }
 
             final task = Task(
               id: _uuid.v4(),
               goalId: goal.id,
               title: 'Daily payment for ${goal.name}',
               dueDate: dueDate,
-              amount: paymentAmount,
+              amount:
+                  goal.originalPeriodicPayment, // Changed from requiredPeriodicPayment
               currency: goal.currency,
             );
             await tasksBox.put(task.id, task);
 
-            // Only schedule notification if due date is in the future
             if (dueDate.isAfter(now)) {
               await NotificationService().scheduleTaskNotification(task, goal);
             }
@@ -84,21 +96,23 @@ class TaskService {
           break;
 
         case SavingsInterval.weekly:
-          final weeks = (daysRemaining / 7).ceil();
-          for (var i = 0; i < weeks; i++) {
-            final dueDate = now.add(Duration(days: i * 7));
-            if (existingCompletedTasks.any(
-              (t) => _isSameWeek(t.dueDate, dueDate),
-            )) {
+          final weeks =
+              (totalDuration!.inDays / 7).ceil(); // Use totalDuration here
+          for (var i = 0; i <= weeks; i++) {
+            final dueDate = goal.startDate.add(Duration(days: i * 7));
+            if (dueDate.isAfter(goal.targetDate!)) continue;
+
+            // Skip if we already have a task for this week
+            if (existingTasks.any((t) => _isSameWeek(t.dueDate, dueDate)))
               continue;
-            }
 
             final task = Task(
               id: _uuid.v4(),
               goalId: goal.id,
               title: 'Weekly payment for ${goal.name}',
               dueDate: dueDate,
-              amount: paymentAmount,
+              amount:
+                  goal.originalPeriodicPayment, // Changed from requiredPeriodicPayment
               currency: goal.currency,
             );
             await tasksBox.put(task.id, task);
@@ -110,23 +124,31 @@ class TaskService {
           break;
 
         case SavingsInterval.monthly:
-          final months = (daysRemaining / 30).ceil();
-          for (var i = 0; i < months; i++) {
-            final dueDate = DateTime(now.year, now.month + i + 1, 1);
-            if (existingCompletedTasks.any(
+          final months =
+              (totalDuration!.inDays / 30).ceil(); // Use totalDuration here
+          for (var i = 0; i <= months; i++) {
+            final dueDate = DateTime(
+              goal.startDate.year,
+              goal.startDate.month + i + 1,
+              1, // First day of month
+            );
+            if (dueDate.isAfter(goal.targetDate!)) continue;
+
+            // Skip if we already have a task for this month
+            if (existingTasks.any(
               (t) =>
                   t.dueDate.year == dueDate.year &&
                   t.dueDate.month == dueDate.month,
-            )) {
+            ))
               continue;
-            }
 
             final task = Task(
               id: _uuid.v4(),
               goalId: goal.id,
               title: 'Monthly payment for ${goal.name}',
               dueDate: dueDate,
-              amount: paymentAmount,
+              amount:
+                  goal.originalPeriodicPayment, // Changed from requiredPeriodicPayment
               currency: goal.currency,
             );
             await tasksBox.put(task.id, task);
@@ -138,21 +160,27 @@ class TaskService {
           break;
 
         case SavingsInterval.yearly:
-          final years = (daysRemaining / 365).ceil();
-          for (var i = 0; i < years; i++) {
-            final dueDate = DateTime(now.year + i + 1, 1, 1);
-            if (existingCompletedTasks.any(
-              (t) => t.dueDate.year == dueDate.year,
-            )) {
+          final years =
+              (totalDuration!.inDays / 365).ceil(); // Use totalDuration here
+          for (var i = 0; i <= years; i++) {
+            final dueDate = DateTime(
+              goal.startDate.year + i + 1,
+              1, // January
+              1, // First day
+            );
+            if (dueDate.isAfter(goal.targetDate!)) continue;
+
+            // Skip if we already have a task for this year
+            if (existingTasks.any((t) => t.dueDate.year == dueDate.year))
               continue;
-            }
 
             final task = Task(
               id: _uuid.v4(),
               goalId: goal.id,
               title: 'Yearly payment for ${goal.name}',
               dueDate: dueDate,
-              amount: paymentAmount,
+              amount:
+                  goal.originalPeriodicPayment, // Changed from requiredPeriodicPayment
               currency: goal.currency,
             );
             await tasksBox.put(task.id, task);
@@ -163,8 +191,6 @@ class TaskService {
           }
           break;
       }
-
-      debugPrint('Generated tasks for goal ${goal.name} successfully');
     } catch (e) {
       debugPrint('Error generating tasks for goal: $e');
       rethrow;
@@ -191,10 +217,43 @@ class TaskService {
     }
   }
 
+  static Future<void> completeTask(Task task, double amount) async {
+    try {
+      final tasksBox = await Hive.openBox<Task>('tasks');
+      final goalsBox = await Hive.openBox<Goal>('goals');
+
+      // Update task status
+      final updatedTask = task.copyWith(isCompleted: true);
+      await tasksBox.put(updatedTask.id, updatedTask);
+
+      // Update goal funding
+      final goal = goalsBox.get(task.goalId);
+      if (goal != null) {
+        final newCurrentAmount = goal.currentAmount + amount;
+        await goalsBox.put(
+          goal.id,
+          goal.copyWith(
+            currentAmount: newCurrentAmount,
+            isCompleted: newCurrentAmount >= goal.targetAmount,
+          ),
+        );
+      }
+
+      // Cancel any pending notification for this task
+      await NotificationService().cancelNotification(task);
+    } catch (e) {
+      debugPrint('Error completing task: $e');
+      rethrow;
+    }
+  }
+
   static Future<void> regenerateAllTasks() async {
     final goalsBox = await Hive.openBox<Goal>('goals');
     for (final goal in goalsBox.values) {
-      await generateTasksForGoal(goal);
+      // Only regenerate tasks for active goals
+      if (!goal.isCompleted) {
+        await generateTasksForGoal(goal);
+      }
     }
   }
 }

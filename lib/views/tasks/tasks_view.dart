@@ -11,8 +11,15 @@ import 'package:pull_to_refresh/pull_to_refresh.dart';
 
 class TasksView extends StatefulWidget {
   final Goal? associatedGoal;
+  final bool regenerateTasks;
+  final bool isComingFromGoals;
 
-  const TasksView({super.key, this.associatedGoal});
+  const TasksView({
+    super.key,
+    this.associatedGoal,
+    this.regenerateTasks = false,
+    this.isComingFromGoals = false,
+  });
 
   @override
   State<TasksView> createState() => _TasksViewState();
@@ -33,10 +40,17 @@ class _TasksViewState extends State<TasksView>
   List<Task> _completedTasks = [];
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_isLoading) {
+      _initHive();
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _initHive();
     _checkForMissedTasks();
   }
 
@@ -48,8 +62,20 @@ class _TasksViewState extends State<TasksView>
   }
 
   Future<void> _initHive() async {
+    if (!mounted) return;
+
+    setState(() => _isLoading = true);
     _tasksBox = await Hive.openBox<Task>('tasks');
     _goalsBox = await Hive.openBox<Goal>('goals');
+
+    if (widget.regenerateTasks && !widget.isComingFromGoals) {
+      if (widget.associatedGoal != null) {
+        await TaskService.generateTasksForGoal(widget.associatedGoal!);
+      } else {
+        await TaskService.regenerateAllTasks();
+      }
+    }
+
     _categorizeTasks();
     if (mounted) setState(() => _isLoading = false);
   }
@@ -66,7 +92,7 @@ class _TasksViewState extends State<TasksView>
                 .toList()
             : _tasksBox.values.toList();
 
-    // Today tasks - due between today 00:00 and tomorrow 00:00
+    // Today tasks - due between today 00:00 and tomorrow 00:00 and not completed
     _todayTasks =
         allTasks.where((task) {
           return !task.isCompleted &&
@@ -74,7 +100,7 @@ class _TasksViewState extends State<TasksView>
               task.dueDate.isBefore(todayEnd);
         }).toList();
 
-    // Upcoming tasks - due after today
+    // Upcoming tasks - due after today and not completed
     _upcomingTasks =
         allTasks.where((task) {
           return !task.isCompleted && task.dueDate.isAfter(todayEnd);
@@ -83,12 +109,10 @@ class _TasksViewState extends State<TasksView>
     // Overdue tasks - due before now and not completed
     _overdueTasks =
         allTasks.where((task) {
-          return !task.isCompleted &&
-              task.dueDate.isBefore(now) &&
-              !_todayTasks.contains(task);
+          return !task.isCompleted && task.dueDate.isBefore(now);
         }).toList();
 
-    // Completed tasks
+    // Completed tasks - only truly completed tasks
     _completedTasks = allTasks.where((task) => task.isCompleted).toList();
 
     // Sorting
@@ -116,29 +140,31 @@ class _TasksViewState extends State<TasksView>
   }
 
   Future<void> _completeTask(Task task, double amount) async {
-    final goal = _goalsBox.get(task.goalId);
-    if (goal != null) {
-      goal.currentAmount += amount;
-      await _goalsBox.put(goal.id, goal);
-    }
+    try {
+      await TaskService.completeTask(task, amount);
+      await NotificationService().cancelNotification(task);
+      _categorizeTasks();
 
-    task.isCompleted = true;
-    await TaskService.updateTaskStatus(task);
-    await NotificationService().cancelNotification(
-      task,
-    ); // Cancel any pending notification
-    _categorizeTasks();
-
-    if (mounted) {
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Payment completed! ₦${amount.toStringAsFixed(0)} added',
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Payment completed! ${task.currency}${amount.toStringAsFixed(0)} added',
+            ),
+            behavior: SnackBarBehavior.floating,
           ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to complete payment: ${e.toString()}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 
@@ -195,21 +221,19 @@ class _TasksViewState extends State<TasksView>
 
   Future<void> _onRefresh() async {
     try {
+      _refreshController.requestRefresh();
       if (widget.associatedGoal != null) {
         await TaskService.generateTasksForGoal(widget.associatedGoal!);
       } else {
-        final goalsBox = await Hive.openBox<Goal>('goals');
-        for (final goal in goalsBox.values) {
-          await TaskService.generateTasksForGoal(goal);
-        }
+        await TaskService.regenerateAllTasks();
       }
       _categorizeTasks();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Tasks refreshed'),
+          const SnackBar(
+            content: Text('Tasks refreshed'),
             behavior: SnackBarBehavior.floating,
-            backgroundColor: Theme.of(context).colorScheme.primary,
           ),
         );
       }
@@ -430,7 +454,7 @@ class _TasksViewState extends State<TasksView>
                   children: [
                     Expanded(
                       child: Text(
-                        goal?.name ?? 'General Savings',
+                        goal?.name ?? '',
                         style: Theme.of(
                           context,
                         ).textTheme.titleMedium?.copyWith(

@@ -83,6 +83,7 @@ class _CreateGoalDialogState extends State<CreateGoalDialog> {
       targetDate: _targetDate,
       savingsInterval: _savingsInterval,
       startingAmount: _startingAmount,
+      startDate: DateTime.now(), // Add this line
     );
 
     await HiveService.addGoal(newGoal);

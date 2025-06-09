@@ -139,7 +139,7 @@ class ThemedGoalCard extends StatelessWidget {
                               children: [
                                 TextSpan(
                                   text:
-                                      'Save ${goal.currency}${goal.requiredPeriodicPayment.toStringAsFixed(0)} ',
+                                      'Save ${goal.currency}${goal.originalPeriodicPayment.toStringAsFixed(0)} ',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     color: theme.colorScheme.primary,

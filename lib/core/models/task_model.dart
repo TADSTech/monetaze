@@ -34,4 +34,24 @@ class Task {
     this.isCompleted = false,
     this.currency = '₦',
   });
+
+  Task copyWith({
+    String? id,
+    String? goalId,
+    String? title,
+    DateTime? dueDate,
+    double? amount,
+    String? currency,
+    bool? isCompleted,
+  }) {
+    return Task(
+      id: id ?? this.id,
+      goalId: goalId ?? this.goalId,
+      title: title ?? this.title,
+      dueDate: dueDate ?? this.dueDate,
+      amount: amount ?? this.amount,
+      currency: currency ?? this.currency,
+      isCompleted: isCompleted ?? this.isCompleted,
+    );
+  }
 }

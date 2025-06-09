@@ -16,6 +16,7 @@ class CustomBottomNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final theme = Theme.of(context);
+    final safeIndex = currentIndex.clamp(0, 4);
 
     return Container(
       decoration: BoxDecoration(
@@ -32,7 +33,7 @@ class CustomBottomNavBar extends StatelessWidget {
         ),
       ),
       child: BottomNavigationBar(
-        currentIndex: currentIndex,
+        currentIndex: safeIndex,
         onTap: onTap,
         backgroundColor: Colors.transparent,
         elevation: 0,
